@@ -103,7 +103,7 @@ wss.on('connection', (clientWs, req) => {
     const sourceLang = urlParams.get('sourceLang') || 'en';
 
     // 3. CONFIGURE DEEPGRAM
-    const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=${sourceLang}&smart_format=true&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=250&utterance_end_ms=1000`;
+    const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=${sourceLang}&smart_format=true&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=500&utterance_end_ms=1500`;
 
     const deepgramWs = new WebSocket(deepgramUrl, {
         headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` }
