@@ -4,7 +4,56 @@ const http = require('http');
 const axios = require('axios'); 
 
 const PORT = process.env.PORT || 3000;
-const server = http.createServer();
+const server = http.createServer(async (req, res) => {
+    // CORS headers for Chrome extension requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
+    // Health check / wake-up endpoint
+    if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+        return;
+    }
+
+    // Translation proxy endpoint — keeps DeepL API key server-side only
+    if (req.method === 'POST' && req.url === '/translate') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const { text, targetLang } = JSON.parse(body);
+                if (!text || !text.trim()) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true, translated: '' }));
+                    return;
+                }
+                const translated = await translateText(text, targetLang || 'EN');
+                if (translated) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true, translated }));
+                } else {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'Translation failed' }));
+                }
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: err.message }));
+            }
+        });
+        return;
+    }
+
+    res.writeHead(404);
+    res.end();
+});
 const wss = new WebSocket.Server({ server });
 
 console.log(`🚀 Starting Sensa Backend...`);
