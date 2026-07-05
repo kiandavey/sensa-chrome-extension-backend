@@ -1,3 +1,22 @@
+/**
+ * @file server.js
+ * @description Real-time WebSocket bridge and REST translation proxy for the Sensa Chrome Extension.
+ *
+ * Architectural Overview:
+ * 1. REST Endpoints:
+ *    - `GET /` or `GET /health`: Health check and wake-up ping for cloud hosting (e.g., Render) to prevent cold starts.
+ *    - `POST /translate`: REST translation proxy using DeepL API. Isolates API keys server-side so they are never exposed to the browser.
+ *
+ * 2. WebSocket Server (`wss`):
+ *    - Chrome Extension connects via WebSocket, passing query parameters `targetLang` and `sourceLang`.
+ *    - Backend opens a dedicated WebSocket connection to Deepgram API (`wss://api.deepgram.com/v1/listen`) using the `nova-3` model.
+ *    - Binary audio packets received from Chrome are piped directly to Deepgram.
+ *    - Transcription results from Deepgram are parsed; when a sentence is finalized (`is_final: true`), it is automatically translated via DeepL and sent back to Chrome as a `TRANSCRIPT` message.
+ *
+ * 3. Keep-Alive Heartbeat:
+ *    - Implements a 30-second ping/pong interval to clean up dead connections and prevent cloud load balancers from closing idle sockets.
+ */
+
 require('dotenv').config();
 const WebSocket = require('ws');
 const http = require('http');
@@ -58,7 +77,7 @@ const wss = new WebSocket.Server({ server });
 
 console.log(`🚀 Starting Sensa Backend...`);
 
-// 1. THE DEEPL TRANSLATION ENGINE
+// 1. DeepL Translation Proxy
 async function translateText(text, targetLang = 'ES') {
     try {
         const response = await axios.post(
@@ -81,7 +100,7 @@ async function translateText(text, targetLang = 'ES') {
     }
 }
 
-// 2. THE CLOUD SURVIVAL HEARTBEAT (Prevents 24/7 Idle Disconnects)
+// 2. Keep-Alive Heartbeat (Prevents idle WebSocket disconnects)
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -102,9 +121,7 @@ wss.on('connection', (clientWs, req) => {
     const targetLang = urlParams.get('targetLang') || 'ES'; 
     const sourceLang = urlParams.get('sourceLang') || 'en';
 
-    // 3. CONFIGURE DEEPGRAM
-    // Nova-3 supports 45+ languages (including Filipino, Arabic, Hebrew, Thai, Malay, etc.)
-    // Nova-2 only supported ~27 languages, causing HTTP 400 for unsupported ones.
+    // 3. Configure Deepgram (Nova-3 supports 45+ languages)
     const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&language=${sourceLang}&smart_format=true&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=250&utterance_end_ms=1000`;
 
     const deepgramWs = new WebSocket(deepgramUrl, {
@@ -113,14 +130,14 @@ wss.on('connection', (clientWs, req) => {
 
     deepgramWs.on('open', () => console.log('🟢 Connected to Deepgram API'));
 
-    // 4. ROUTE AUDIO: Chrome -> Deepgram
+    // 4. Route Audio: Chrome -> Deepgram
     clientWs.on('message', (audioData) => {
         if (deepgramWs.readyState === WebSocket.OPEN) {
             deepgramWs.send(audioData);
         }
     });
 
-    // 5. ROUTE TEXT: Deepgram -> DeepL -> Chrome
+    // 5. Route Text: Deepgram -> DeepL -> Chrome
     deepgramWs.on('message', async (data) => {
         try {
             const payload = JSON.parse(data);
@@ -152,7 +169,7 @@ wss.on('connection', (clientWs, req) => {
         }
     });
 
-    // 6. SAFE CLEANUP
+    // 6. Safe Cleanup
     clientWs.on('close', () => {
         console.log('❌ Chrome Extension Disconnected');
         if (deepgramWs.readyState === WebSocket.OPEN) deepgramWs.close();
