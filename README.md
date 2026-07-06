@@ -136,3 +136,9 @@ When deploying to cloud platforms (such as **Render**, **Railway**, **Fly.io**, 
 1. **WebSockets Support:** Ensure your host natively supports WebSocket upgrades over HTTPS (`wss://`).
 2. **Environment Variables:** Add `DEEPGRAM_API_KEY` and `DEEPL_API_KEY` in your cloud provider's dashboard.
 3. **Cold Starts:** If deploying on a free tier that sleeps after inactivity, the extension automatically calls `GET /health` on startup to wake up the server before initializing live speech streaming.
+
+---
+
+## 📄 License & Acknowledgments
+* Built by **BSIT 4H-G1 Group 2 — Bulacan State University (BulSU)**.
+* Powered by [Deepgram Nova-3](https://deepgram.com/) and [DeepL API](https://www.deepl.com/).
