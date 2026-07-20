@@ -119,7 +119,7 @@ DEEPL_API_KEY=your_deepl_auth_key_here
 npm install
 
 # Start the server
-node server.js
+npm start
 ```
 
 You should see the startup confirmation in your terminal:
