@@ -84,7 +84,7 @@ const wss = new WebSocket.Server({
 const AZURE_REGION = (
     process.env.AZURE_REGION ||
     process.env.AZURE_TRANSLATOR_REGION ||
-    'japaneast'
+    'eastasia'
 ).toLowerCase().trim().replace(/\s+/g, '');
 
 console.log(`🚀 Starting Sensa Backend on port ${PORT}...`);
