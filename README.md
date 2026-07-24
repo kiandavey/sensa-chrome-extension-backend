@@ -3,7 +3,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![WebSockets](https://img.shields.io/badge/WebSockets-ws-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://github.com/websockets/ws)
 [![Deepgram Nova-3](https://img.shields.io/badge/AI_STT-Deepgram_Nova--3-13EF93?style=for-the-badge)](https://deepgram.com/)
-[![DeepL API](https://img.shields.io/badge/AI_Translation-DeepL_API-0F2B46?style=for-the-badge)](https://www.deepl.com/)
+[![Azure Translator API](https://img.shields.io/badge/AI_Translation-Azure_Translator-0089D6?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/cognitive-services/translator)
 
 **Sensa Backend** is a high-performance Node.js server that acts as a real-time WebSocket streaming bridge and REST translation proxy for the **Sensa Chrome Extension**. It securely routes live audio from browser tabs to cloud AI models while keeping sensitive API credentials completely isolated from the client.
 
@@ -16,10 +16,10 @@ sequenceDiagram
     participant Chrome as Chrome Extension (Client)
     participant Backend as Sensa Backend (Node.js/ws)
     participant Deepgram as Deepgram Nova-3 API
-    participant DeepL as DeepL Translation API
+    participant Azure as Azure Translator API
 
     Note over Chrome,Backend: 1. Handshake & Connection
-    Chrome->>Backend: WebSocket Connect (/?targetLang=ES&sourceLang=en)
+    Chrome->>Backend: WebSocket Connect (/?targetLang=es&sourceLang=en)
     Backend->>Deepgram: Open Dedicated WebSocket (wss://api.deepgram.com/v1/listen)
     Deepgram-->>Backend: 🟢 Connected
 
@@ -32,8 +32,8 @@ sequenceDiagram
     Note over Deepgram,Chrome: 3. Transcription & On-the-Fly Translation
     Deepgram-->>Backend: Interim / Final Transcript JSON
     alt is_final == true
-        Backend->>DeepL: POST /v2/translate (Text + Target Lang)
-        DeepL-->>Backend: Translated String
+        Backend->>Azure: POST /translate (Text + Target Lang)
+        Azure-->>Backend: Translated String
         Backend-->>Chrome: TRANSCRIPT Payload (Original + Translation)
     else is_final == false
         Backend-->>Chrome: TRANSCRIPT Payload (Interim Only)
@@ -41,9 +41,9 @@ sequenceDiagram
 ```
 
 ### Key Responsibilities:
-1. **API Key Isolation:** Protects `DEEPGRAM_API_KEY` and `DEEPL_API_KEY` by handling all authentication server-side.
+1. **API Key Isolation:** Protects `DEEPGRAM_API_KEY`, `AZURE_TRANSLATOR_KEY`, and `AZURE_REGION` by handling all authentication server-side.
 2. **Low-Latency Audio Piping:** Forwards raw 16kHz linear16 PCM audio packets from Chrome's `tabCapture` directly to Deepgram's `nova-3` speech recognition engine.
-3. **Smart Quota Protection:** Translates text via DeepL *only* when Deepgram marks an utterance as finalized (`is_final: true`), preventing redundant translation API calls on interim speech guesses.
+3. **Smart Quota Protection:** Translates text via Azure Translator *only* when Deepgram marks an utterance as finalized (`is_final: true`), preventing redundant translation API calls on interim speech guesses.
 4. **Cloud Keep-Alive Heartbeat:** Emits a ping/pong frame every 30 seconds to clean up dead sockets and prevent cloud load balancers (e.g., Render, Heroku, AWS ALB) from terminating idle connections.
 
 ---
@@ -53,7 +53,7 @@ sequenceDiagram
 ### 1️⃣ WebSocket Bridge Endpoint
 * **URL:** `ws://localhost:3000/?targetLang={LANG}&sourceLang={LANG}` (or cloud wss URL)
 * **Query Parameters:**
-  * `targetLang` (optional, default `ES`): The target language code for DeepL translation (e.g., `ES`, `FR`, `DE`, `JA`, `KO`).
+  * `targetLang` (optional, default `es`): The target language ISO code for Azure Translator (e.g., `es`, `fr`, `de`, `ja`, `ko`, `fil`).
   * `sourceLang` (optional, default `en`): The spoken source language code for Deepgram speech recognition (supports 45+ languages including `en`, `es`, `fil`, `he`, `ar`).
 * **Incoming Client Messages:** Raw binary audio buffers (`ArrayBuffer` / `Buffer`).
 * **Outgoing Client Messages:** JSON strings formatted as:
@@ -102,7 +102,7 @@ sequenceDiagram
 * **Node.js**: v18.0.0 or higher
 * **API Keys**:
   * [Deepgram API Key](https://console.deepgram.com/) (with access to `nova-3`)
-  * [DeepL API Key](https://www.deepl.com/pro-api) (Free or Pro tier)
+  * [Azure Translator Key](https://portal.azure.com/)
 
 ### 2. Environment Configuration
 Create a `.env` file in the root of `sensa-backend/`:
@@ -110,7 +110,8 @@ Create a `.env` file in the root of `sensa-backend/`:
 ```env
 PORT=3000
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
-DEEPL_API_KEY=your_deepl_auth_key_here
+AZURE_TRANSLATOR_KEY=your_azure_translator_key_here
+AZURE_REGION=eastasia
 ```
 
 ### 3. Install Dependencies & Run
@@ -134,11 +135,11 @@ You should see the startup confirmation in your terminal:
 
 When deploying to cloud platforms (such as **Render**, **Railway**, **Fly.io**, or **Heroku**):
 1. **WebSockets Support:** Ensure your host natively supports WebSocket upgrades over HTTPS (`wss://`).
-2. **Environment Variables:** Add `DEEPGRAM_API_KEY` and `DEEPL_API_KEY` in your cloud provider's dashboard.
+2. **Environment Variables:** Add `DEEPGRAM_API_KEY`, `AZURE_TRANSLATOR_KEY`, and `AZURE_REGION` in your cloud provider's dashboard.
 3. **Cold Starts:** If deploying on a free tier that sleeps after inactivity, the extension automatically calls `GET /health` on startup to wake up the server before initializing live speech streaming.
 
 ---
 
 ## 📄 License & Acknowledgments
 * Built by **BSIT 4H-G1 Group 2 — Bulacan State University (BulSU)**.
-* Powered by [Deepgram Nova-3](https://deepgram.com/) and [DeepL API](https://www.deepl.com/).
+* Powered by [Deepgram Nova-3](https://deepgram.com/) and [Azure Translator API](https://azure.microsoft.com/).
