@@ -77,25 +77,23 @@ const wss = new WebSocket.Server({ server });
 
 console.log(`🚀 Starting Sensa Backend...`);
 
-// 1. DeepL Translation Proxy
+// 1. Azure Translation Proxy
 async function translateText(text, targetLang = 'ES') {
     try {
         const response = await axios.post(
-            'https://api-free.deepl.com/v2/translate',
-            new URLSearchParams({
-                text: text,
-                target_lang: targetLang
-            }),
+            `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${targetLang}`,
+            [{ text: text }],
             {
                 headers: {
-                    'Authorization': `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
+                    'Ocp-Apim-Subscription-Key': process.env.AZURE_TRANSLATOR_KEY,
+                    'Ocp-Apim-Subscription-Region': process.env.AZURE_REGION || 'eastasia',
+                    'Content-Type': 'application/json'
                 }
             }
         );
-        return response.data.translations[0].text;
+        return response.data[0].translations[0].text;
     } catch (error) {
-        console.error('DeepL Error:', error.response?.data || error.message);
+        console.error('Azure Translator Error:', error.response?.data || error.message);
         return null;
     }
 }
