@@ -4,25 +4,25 @@
  *
  * Architectural Overview:
  * 1. REST Endpoints:
- *    - `GET /` or `GET /health`: Health check and wake-up ping for cloud hosting (e.g., Render) to prevent cold starts.
- *    - `POST /translate`: REST translation proxy using Azure Translator API. Isolates API keys server-side so they are never exposed to the browser.
+ *    - `GET /` or `GET /health`: Health check and wake-up ping for cloud hosting.
+ *    - `POST /translate`: REST translation proxy using Azure Translator API. Isolates API keys server-side.
  *
  * 2. WebSocket Server (`wss`):
- *    - Chrome Extension connects via WebSocket, passing query parameters `targetLang` and `sourceLang`.
- *    - Backend opens a dedicated WebSocket connection to Deepgram API (`wss://api.deepgram.com/v1/listen`) using the `nova-3` model.
- *    - Binary audio packets received from Chrome are piped directly to Deepgram.
- *    - Transcription results from Deepgram are parsed; when a sentence is finalized (`is_final: true`), it is automatically translated via Azure Translator and sent back to Chrome as a `TRANSCRIPT` message.
+ *    - Chrome Extension connects via WebSocket with `targetLang` and `sourceLang`.
+ *    - Opens connection to Deepgram API (`wss://api.deepgram.com/v1/listen`) using `nova-3`.
+ *    - Directs binary audio from Chrome to Deepgram, then translates finalized transcripts (`is_final: true`) via Azure Translator.
  *
  * 3. Keep-Alive Heartbeat:
- *    - Implements a 30-second ping/pong interval to clean up dead connections and prevent cloud load balancers from closing idle sockets.
+ *    - 30-second ping/pong interval to prevent cloud load balancers from closing idle sockets.
  */
 
 require('dotenv').config();
 const WebSocket = require('ws');
 const http = require('http');
-const axios = require('axios'); 
+const axios = require('axios');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
+
 const server = http.createServer(async (req, res) => {
     // CORS headers for Chrome extension requests
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -38,11 +38,11 @@ const server = http.createServer(async (req, res) => {
     // Health check / wake-up endpoint
     if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok' }));
+        res.end(JSON.stringify({ status: 'ok', service: 'Sensa Backend Azure' }));
         return;
     }
 
-    // Translation proxy endpoint — keeps Azure API key server-side only
+    // Translation proxy endpoint
     if (req.method === 'POST' && req.url === '/translate') {
         let body = '';
         req.on('data', chunk => { body += chunk; });
@@ -55,7 +55,7 @@ const server = http.createServer(async (req, res) => {
                     return;
                 }
                 const translated = await translateText(text, targetLang || 'es');
-                if (translated) {
+                if (translated !== null) {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ ok: true, translated }));
                 } else {
@@ -73,13 +73,29 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404);
     res.end();
 });
-const wss = new WebSocket.Server({ server });
+
+// Disable perMessageDeflate for Azure Linux proxy compatibility
+const wss = new WebSocket.Server({
+    server,
+    perMessageDeflate: false
+});
+
+// Read region dynamically (supports AZURE_REGION or AZURE_TRANSLATOR_REGION)
+const AZURE_REGION = (
+    process.env.AZURE_REGION ||
+    process.env.AZURE_TRANSLATOR_REGION ||
+    'japaneast'
+).toLowerCase().trim().replace(/\s+/g, '');
 
 console.log(`🚀 Starting Sensa Backend on port ${PORT}...`);
 if (process.env.AZURE_TRANSLATOR_KEY) {
-    console.log(`🌐 [Azure Translator] Ready (Region: ${process.env.AZURE_REGION || 'eastasia'})`);
+    console.log(`🌐 [Azure Translator] Ready (Region: ${AZURE_REGION})`);
 } else {
     console.log(`⚠️ [Azure Translator] Key missing! Please set AZURE_TRANSLATOR_KEY in environment variables.`);
+}
+
+if (!process.env.DEEPGRAM_API_KEY) {
+    console.log(`⚠️ [Deepgram] Key missing! Please set DEEPGRAM_API_KEY in environment variables.`);
 }
 
 // 1. Azure Translation Proxy
@@ -90,7 +106,6 @@ async function translateText(text, targetLang = 'es') {
     }
 
     const langCode = (targetLang || 'es').toLowerCase();
-    const region = (process.env.AZURE_REGION || 'eastasia').toLowerCase().replace(/\s+/g, '');
 
     try {
         const response = await axios.post(
@@ -99,7 +114,7 @@ async function translateText(text, targetLang = 'es') {
             {
                 headers: {
                     'Ocp-Apim-Subscription-Key': process.env.AZURE_TRANSLATOR_KEY.trim(),
-                    'Ocp-Apim-Subscription-Region': region,
+                    'Ocp-Apim-Subscription-Region': AZURE_REGION,
                     'Content-Type': 'application/json'
                 }
             }
@@ -111,7 +126,7 @@ async function translateText(text, targetLang = 'es') {
     }
 }
 
-// 2. Keep-Alive Heartbeat (Prevents idle WebSocket disconnects)
+// 2. Keep-Alive Heartbeat
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -121,18 +136,16 @@ const interval = setInterval(() => {
 }, 30000);
 
 wss.on('connection', (clientWs, req) => {
-    // Heartbeat setup
     clientWs.isAlive = true;
     clientWs.on('pong', () => { clientWs.isAlive = true; });
 
-    // Parse language query parameters
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
-    const targetLang = urlParams.get('targetLang') || 'es'; 
+    const targetLang = urlParams.get('targetLang') || 'es';
     const sourceLang = urlParams.get('sourceLang') || 'en';
 
     console.log(`🔌 Chrome Extension Connected (${sourceLang} -> ${targetLang})`);
 
-    // 3. Configure Deepgram (Nova-3 supports 45+ languages)
+    // 3. Configure Deepgram
     const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&language=${sourceLang}&smart_format=true&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=250&utterance_end_ms=1000`;
 
     const deepgramWs = new WebSocket(deepgramUrl, {
@@ -162,8 +175,7 @@ wss.on('connection', (clientWs, req) => {
 
             if (transcript.trim()) {
                 let translatedText = '';
-                
-                // Quota Protection: Only translate finished sentences
+
                 if (isFinal) {
                     translatedText = await translateText(transcript, targetLang);
                     console.log(`✨ [Translation]: "${transcript}" -> "${translatedText}" (${targetLang})`);
@@ -172,8 +184,8 @@ wss.on('connection', (clientWs, req) => {
                 if (clientWs.readyState === WebSocket.OPEN) {
                     clientWs.send(JSON.stringify({
                         type: 'TRANSCRIPT',
-                        text: transcript,             
-                        translated: translatedText,   
+                        text: transcript,
+                        translated: translatedText,
                         isFinal: isFinal
                     }));
                 }
@@ -196,9 +208,8 @@ wss.on('connection', (clientWs, req) => {
     deepgramWs.on('error', (err) => console.error('Deepgram Error:', err.message));
 });
 
-// Clear interval when server shuts down
 wss.on('close', () => clearInterval(interval));
 
 server.listen(PORT, () => {
-    console.log(`✅ Server is listening on port ${PORT}`);
+    console.log(`✅ Server listening on port ${PORT}`);
 });
