@@ -76,6 +76,11 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocket.Server({ server });
 
 console.log(`🚀 Starting Sensa Backend...`);
+if (process.env.AZURE_TRANSLATOR_KEY) {
+    console.log(`🌐 [Azure Translator API] Configured & Ready! (Region: ${process.env.AZURE_REGION || 'eastasia'})`);
+} else {
+    console.log(`⚠️ [Azure Translator API] Key missing! Please set AZURE_TRANSLATOR_KEY in Render environment variables.`);
+}
 
 // 1. Azure Translation Proxy
 async function translateText(text, targetLang = 'es') {
@@ -99,9 +104,11 @@ async function translateText(text, targetLang = 'es') {
                 }
             }
         );
-        return response.data[0].translations[0].text;
+        const translatedResult = response.data[0]?.translations[0]?.text || '';
+        console.log(`🔷 [Azure Translator OK]: "${text}" -> "${translatedResult}" (${langCode})`);
+        return translatedResult;
     } catch (error) {
-        console.error('Azure Translator Error:', error.response?.data || error.message);
+        console.error('❌ [Azure Translator Error]:', error.response?.data || error.message);
         return null;
     }
 }
