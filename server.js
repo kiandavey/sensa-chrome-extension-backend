@@ -139,7 +139,10 @@ wss.on('connection', (clientWs, req) => {
         headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` }
     });
 
-    deepgramWs.on('open', () => console.log('🟢 Connected to Deepgram API'));
+    deepgramWs.on('open', () => {
+        console.log('🟢 Connected to Deepgram API');
+        console.log('🔵 Connected to Azure Translator API');
+    });
 
     // 4. Route Audio: Chrome -> Deepgram
     clientWs.on('message', (audioData) => {
@@ -155,7 +158,7 @@ wss.on('connection', (clientWs, req) => {
             if (payload.type === 'Metadata') return;
 
             const transcript = payload?.channel?.alternatives?.[0]?.transcript || '';
-            const isFinal = payload?.is_final;
+            const isFinal = payload?.is_final || payload?.speech_final;
 
             if (transcript.trim()) {
                 let translatedText = '';
@@ -186,7 +189,10 @@ wss.on('connection', (clientWs, req) => {
         if (deepgramWs.readyState === WebSocket.OPEN) deepgramWs.close();
     });
 
-    deepgramWs.on('close', () => console.log('🛑 Deepgram Connection Closed'));
+    deepgramWs.on('close', () => {
+        console.log('🛑 Deepgram Connection Closed');
+        console.log('🔴 Azure Translator Session Closed');
+    });
     deepgramWs.on('error', (err) => console.error('Deepgram Error:', err.message));
 });
 
