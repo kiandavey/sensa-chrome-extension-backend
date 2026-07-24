@@ -78,15 +78,23 @@ const wss = new WebSocket.Server({ server });
 console.log(`🚀 Starting Sensa Backend...`);
 
 // 1. Azure Translation Proxy
-async function translateText(text, targetLang = 'ES') {
+async function translateText(text, targetLang = 'es') {
+    if (!process.env.AZURE_TRANSLATOR_KEY) {
+        console.error('❌ AZURE_TRANSLATOR_KEY is missing in Render Environment Variables!');
+        return null;
+    }
+
+    const langCode = (targetLang || 'es').toLowerCase();
+    const region = (process.env.AZURE_REGION || 'eastasia').toLowerCase().replace(/\s+/g, '');
+
     try {
         const response = await axios.post(
-            `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${targetLang}`,
+            `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${langCode}`,
             [{ text: text }],
             {
                 headers: {
-                    'Ocp-Apim-Subscription-Key': process.env.AZURE_TRANSLATOR_KEY,
-                    'Ocp-Apim-Subscription-Region': process.env.AZURE_REGION || 'eastasia',
+                    'Ocp-Apim-Subscription-Key': process.env.AZURE_TRANSLATOR_KEY.trim(),
+                    'Ocp-Apim-Subscription-Region': region,
                     'Content-Type': 'application/json'
                 }
             }
